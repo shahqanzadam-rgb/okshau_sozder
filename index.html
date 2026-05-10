@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="kk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Оқшау Сөздер - ТІКЕЛЕЙ ЭФИР</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto+Condensed:wght@700&family=Inter:wght@400;900&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --studio-blue: #001f3f;
+            --studio-red: #cc0000;
+            --studio-accent: #00d4ff;
+            --kazakh-gold: #f8ac1b;
+        }
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--studio-blue);
+            color: white;
+            overflow: hidden;
+            background-image: radial-gradient(circle at center, #003366 0%, #001122 100%);
+        }
+        .studio-font { font-family: 'Roboto Condensed', sans-serif; text-transform: uppercase; }
+        
+        .live-badge {
+            background: var(--studio-red);
+            animation: pulse 1.5s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .logo-jas {
+            font-family: 'Roboto Condensed', sans-serif;
+            background: linear-gradient(to bottom, var(--kazakh-gold), #ffcc33);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            filter: drop-shadow(0 0 10px rgba(248, 172, 27, 0.5));
+        }
+
+        .selection-glow {
+            box-shadow: 0 0 40px var(--studio-accent);
+            border-color: var(--studio-accent) !important;
+            transform: scale(1.02);
+        }
+
+        .shake {
+            animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both;
+        }
+        @keyframes shake {
+            10%, 90% { transform: translate3d(-1px, 0, 0); }
+            20%, 80% { transform: translate3d(2px, 0, 0); }
+            30%, 50%, 70% { transform: translate3d(-4px, 0, 0); }
+            40%, 60% { transform: translate3d(4px, 0, 0); }
+        }
+
+        #output_canvas {
+            transform: scaleX(-1);
+            border-radius: 12px;
+            border: 2px solid var(--studio-accent);
+        }
+    </style>
+</head>
+<body class="h-screen flex flex-col items-center justify-center p-4">
+
+    <div id="loading" class="fixed inset-0 bg-black z-50 flex flex-col items-center justify-center">
+        <div class="w-20 h-20 border-8 border-cyan-500 border-t-transparent rounded-full animate-spin"></div>
+        <h2 class="mt-4 studio-font text-2xl tracking-widest uppercase">Студия жүктелуде...</h2>
+    </div>
+
+    <div id="game-ui" class="hidden fixed top-0 left-0 right-0 p-6 flex justify-between items-start z-20 bg-gradient-to-b from-black/80 to-transparent">
+        <div class="flex items-center gap-4">
+            <div class="live-badge px-4 py-1 rounded text-sm font-black studio-font tracking-tighter">● ТІКЕЛЕЙ ЭФИР</div>
+            <div class="bg-black/50 border border-white/20 px-4 py-2 rounded-lg">
+                <span class="text-xs text-gray-400 studio-font">ЖАЛПЫ ҰПАЙ</span>
+                <div id="score" class="text-2xl font-black text-cyan-400">000</div>
+            </div>
+        </div>
+
+        <div class="flex flex-col items-center">
+            <div class="text-4xl font-black logo-jas mb-2">Jas2307</div>
+            <div class="flex items-center gap-2 mb-2">
+                <div id="camera-led" class="w-3 h-3 bg-red-600 rounded-full"></div>
+                <span id="status-text" class="text-xs font-bold studio-font tracking-widest text-white/70 uppercase">БЕТ АНЫҚТАЛМАДЫ</span>
+            </div>
+            <div class="w-64 h-2 bg-white/10 rounded-full overflow-hidden border border-white/20">
+                <div id="timer-bar" class="h-full bg-cyan-500 w-full transition-all duration-100"></div>
+            </div>
+        </div>
+
+        <div class="flex flex-col items-end gap-2">
+            <div class="bg-black/50 border border-white/20 px-4 py-2 rounded-lg text-right">
+                <span class="text-xs text-gray-400 studio-font">АЙДАР</span>
+                <div id="level-display" class="text-sm font-bold text-white uppercase tracking-widest italic">ГРАММАТИКА</div>
+            </div>
+            <button onclick="toggleMusic()" id="music-btn" class="p-2 bg-white/10 hover:bg-white/20 rounded-full border border-white/30 transition-colors">🔊</button>
+        </div>
+    </div>
+
+    <video id="input_video" class="hidden"></video>
+    <div class="fixed bottom-20 right-6 w-48 h-36 z-30 overflow-hidden rounded-xl shadow-2xl border-2 border-white/20">
+        <canvas id="output_canvas" class="w-full h-full object-cover"></canvas>
+    </div>
+
+    <main id="screen-container" class="relative w-full max-w-5xl h-[70vh] flex flex-col items-center justify-center">
+        
+        <!-- START SCREEN -->
+        <div id="start-screen" class="text-center space-y-12">
+            <div class="space-y-2">
+                <h1 class="text-7xl md:text-8xl font-black studio-font tracking-tighter text-white drop-shadow-2xl">
+                    ТЕЛЕ <span class="text-cyan-500">СТУДИЯ</span>
+                </h1>
+                <p class="text-2xl text-cyan-200/80 studio-font tracking-[0.3em]">ОҚШАУ СӨЗДЕР МАРАФОНЫ</p>
+                <div class="text-3xl font-bold logo-jas mt-4 italic">Jas2307</div>
+            </div>
+            
+            <button onclick="requestCamera()" class="group relative px-16 py-8 bg-transparent border-4 border-white text-white text-4xl font-black studio-font hover:bg-white hover:text-blue-900 transition-all duration-300">
+                ЭФИРДІ БАСТАУ
+                <div class="absolute -inset-2 border-2 border-cyan-500 opacity-50 group-hover:opacity-100 animate-pulse"></div>
+            </button>
+        </div>
+
+        <!-- CALIBRATION -->
+        <div id="calibration-screen" class="hidden text-center space-y-8">
+            <h2 class="text-5xl font-black studio-font text-cyan-400">ОБЪЕКТИВТІ РЕТТЕУ</h2>
+            <p class="text-xl text-gray-400">БАСЫҢЫЗДЫ ОРТАДА ТҮЗУ ҰСТАҢЫЗ...</p>
+            <div class="relative w-48 h-48 mx-auto flex items-center justify-center">
+                <div class="absolute inset-0 border-4 border-cyan-500/30 rounded-full animate-ping"></div>
+                <div id="calib-progress" class="text-7xl font-black text-white">3</div>
+            </div>
+        </div>
+
+        <!-- GAME SCREEN -->
+        <div id="game-screen" class="hidden w-full flex flex-col items-center">
+            <div class="w-full bg-black/40 backdrop-blur-md p-10 mb-12 border-y-2 border-cyan-500/50">
+                <h3 id="current-question" class="text-3xl md:text-5xl font-black text-center text-white leading-tight">
+                    СҰРАҚ ЖҮКТЕЛУДЕ...
+                </h3>
+            </div>
+
+            <div class="grid grid-cols-2 gap-8 w-full max-w-4xl px-4">
+                <div id="btn-A" class="relative bg-white/5 border-2 border-white/20 p-8 rounded-lg transition-all flex flex-col items-center justify-center h-32 overflow-hidden">
+                    <div id="progress-A" class="absolute bottom-0 left-0 h-1 bg-cyan-400 w-0"></div>
+                    <span class="absolute top-2 left-2 text-xl font-bold text-cyan-400">⬅️ A</span>
+                    <p id="label-A" class="text-2xl font-bold text-center">...</p>
+                </div>
+                <div id="btn-B" class="relative bg-white/5 border-2 border-white/20 p-8 rounded-lg transition-all flex flex-col items-center justify-center h-32 overflow-hidden">
+                    <div id="progress-B" class="absolute bottom-0 left-0 h-1 bg-cyan-400 w-0"></div>
+                    <span class="absolute top-2 right-2 text-xl font-bold text-cyan-400">B ➡️</span>
+                    <p id="label-B" class="text-2xl font-bold text-center">...</p>
+                </div>
+                <div id="btn-C" class="relative bg-white/5 border-2 border-white/20 p-8 rounded-lg transition-all flex flex-col items-center justify-center h-32 overflow-hidden">
+                    <div id="progress-C" class="absolute bottom-0 left-0 h-1 bg-cyan-400 w-0"></div>
+                    <span class="absolute top-2 left-1/2 -translate-x-1/2 text-xl font-bold text-cyan-400">⬆️ C</span>
+                    <p id="label-C" class="text-2xl font-bold text-center">...</p>
+                </div>
+                <div id="btn-D" class="relative bg-white/5 border-2 border-white/20 p-8 rounded-lg transition-all flex flex-col items-center justify-center h-32 overflow-hidden">
+                    <div id="progress-D" class="absolute bottom-0 left-0 h-1 bg-cyan-400 w-0"></div>
+                    <span class="absolute bottom-2 left-1/2 -translate-x-1/2 text-xl font-bold text-cyan-400">⬇️ D</span>
+                    <p id="label-D" class="text-2xl font-bold text-center">...</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- END SCREEN -->
+        <div id="end-screen" class="hidden text-center space-y-8 py-10 w-full max-w-2xl">
+            <h2 class="text-5xl font-black studio-font text-cyan-400 uppercase">Эфир аяқталды</h2>
+            <div id="certificate" class="bg-black/60 p-10 border-4 border-cyan-500 rounded-none relative shadow-[0_0_50px_rgba(0,212,255,0.2)]">
+                <div class="logo-jas text-2xl font-black mb-4">Jas2307</div>
+                <h3 class="text-3xl font-black studio-font mb-6 border-b border-white/20 pb-4">СТУДИЯ СЕРТИФИКАТЫ</h3>
+                <p class="text-cyan-400 text-sm mb-1 uppercase tracking-widest">Жүргізушінің есімі</p>
+                <div class="text-4xl font-black mb-8 border-b-2 border-cyan-500/30 inline-block px-10 py-2 italic">ОҚУШЫ</div>
+                <div class="grid grid-cols-3 gap-4 mt-8">
+                    <div class="bg-white/5 p-4">
+                        <div class="text-xs text-gray-400">ҰПАЙ</div>
+                        <div id="final-score" class="text-2xl font-black">0</div>
+                    </div>
+                    <div class="bg-white/5 p-4 border-x border-white/10">
+                        <div class="text-xs text-gray-400">ДӘЛДІК</div>
+                        <div id="final-accuracy" class="text-2xl font-black text-cyan-400">0%</div>
+                    </div>
+                    <div class="bg-white/5 p-4">
+                        <div class="text-xs text-gray-400">МӘРТЕБЕ</div>
+                        <div class="text-sm font-black text-green-500 uppercase">ШЕБЕР</div>
+                    </div>
+                </div>
+            </div>
+            <button onclick="location.reload()" class="bg-white text-black px-12 py-4 font-black studio-font hover:bg-cyan-500 hover:text-white transition-all uppercase">Бағдарламаны қайталау</button>
+        </div>
+    </main>
+
+    <script>
+        const QUESTIONS = [
+            { q: "Сөйлемдегі қаратпа сөзді тап: 'Балалар, бүгін жарыс болады.'", a: "Балалар", b: "Бүгін", c: "Жарыс", d: "Болады", correct: 'A' },
+            { q: "Қыстырма сөзді тап: 'Меніңше, бұл дұрыс шешім.'", a: "Бұл", b: "Меніңше", c: "Дұрыс", d: "Шешім", correct: 'B' },
+            { q: "Одағай қайсы: 'Пай-пай, мынау қандай сұлу!'", a: "Қандай", b: "Сұлу", c: "Пай-пай", d: "Мынау", correct: 'C' },
+            { q: "Жекіру одағайы қайсы?", a: "Тәйт", b: "Бәрекелді", c: "Ойбай", d: "Аттең", correct: 'A' },
+            { q: "Күманды білдіретін қыстырма сөз:", a: "Әрине", b: "Бәлкім", c: "Қысқасы", d: "Біріншіден", correct: 'B' },
+            { q: "Өкініш одағайын тап:", a: "Оһ", b: "Алақай", c: "Қап", d: "Па", correct: 'C' },
+            { q: "Сөйлемнің оқшау мүшесіне жатпайды:", a: "Қаратпа", b: "Қыстырма", c: "Одағай", d: "Бастауыш", correct: 'D' },
+            { q: "Егер оқшау сөз сөйлем соңында келсе, тыныс белгісі қалай қойылады?", a: "Алдынан үтір қойылады", b: "Соңынан үтір қойылады", c: "Сызықша қойылады", d: "Белгі қойылмайды", correct: 'A' },
+            { q: "Сөйлем ортасында келген оқшау сөз қалай белгіленеді?", a: "Бір жағынан", b: "Екі жағынан үтір", c: "Сызықшамен", d: "Белгі қойылмайды", correct: 'B' },
+            { q: "Сүйіспеншілікті білдіретін одағай:", a: "Тпу", b: "Ай-ай", c: "Айналайын", d: "Мәссаған", correct: 'C' },
+            { q: "Сөйлемдегі ойдың ретін білдіретін сөз:", a: "Екіншіден", b: "Мүмкін", c: "Расында", d: "Амал не", correct: 'A' },
+            { q: "Қуаныш одағайы:", a: "Еһе", b: "Алақай", c: "Ау", d: "Әттеген-ай", correct: 'B' },
+            { q: "Дәлелдеуді білдіретін қыстырма сөз:", a: "Шынында", b: "Демек", c: "Мүмкін", d: "Біріншіден", correct: 'A' },
+            { q: "Қаратпа сөздің қызметі қандай?", a: "Сұрақ қою", b: "Назар аударту", c: "Сезім білдіру", d: "Ойды жинақтау", correct: 'B' },
+            { q: "Одағайды тап: 'Ойбай-ау, мынау кім?'", a: "Мынау", b: "Кім", c: "Ойбай-ау", d: "Ау", correct: 'C' }
+        ];
+
+        let currentQ = 0;
+        let score = 0;
+        let correctCount = 0;
+        let timer = 30;
+        let timerInterval;
+        let isMuted = false;
+        let isPlaying = false;
+        let calibrationDone = false;
+        let neutralPos = { x: 0.5, y: 0.5 };
+        let selectedOption = null;
+        let selectionStartTime = null;
+
+        // --- ДЫБЫСТАР ЖҮЙЕСІ ---
+        // Шапалақ (Applause)
+        const applauseSynth = new Tone.NoiseSynth({
+            noise: { type: 'pink' },
+            envelope: { attack: 0.005, decay: 0.1, sustain: 0.02 }
+        }).toDestination();
+
+        // Жағымды әуен (Success Jingle)
+        const successSynth = new Tone.PolySynth(Tone.Synth).toDestination();
+        successSynth.set({
+            oscillator: { type: "triangle" },
+            envelope: { attack: 0.05, release: 0.5 }
+        });
+
+        const wrongSynth = new Tone.MembraneSynth().toDestination();
+        const musicSynth = new Tone.AMSynth().toDestination();
+        musicSynth.volume.value = -25;
+
+        function playSuccessAudio() {
+            if (isMuted) return;
+            const now = Tone.now();
+            
+            // Жағымды әуен (C4-E4-G4-C5)
+            successSynth.triggerAttackRelease("C4", "8n", now);
+            successSynth.triggerAttackRelease("E4", "8n", now + 0.1);
+            successSynth.triggerAttackRelease("G4", "8n", now + 0.2);
+            successSynth.triggerAttackRelease("C5", "4n", now + 0.3);
+
+            // Шапалақпен қоса ойнату
+            for(let i=0; i<15; i++) {
+                applauseSynth.triggerAttackRelease(0.12, now + 0.3 + (i * 0.04 + Math.random() * 0.02));
+            }
+        }
+
+        const videoElement = document.getElementById('input_video');
+        const canvasElement = document.getElementById('output_canvas');
+        const canvasCtx = canvasElement.getContext('2d');
+        const statusText = document.getElementById('status-text');
+        const statusLed = document.getElementById('camera-led');
+
+        const faceMesh = new FaceMesh({
+            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`,
+        });
+
+        faceMesh.setOptions({
+            maxNumFaces: 1,
+            refineLandmarks: true,
+            minDetectionConfidence: 0.6,
+            minTrackingConfidence: 0.6
+        });
+
+        faceMesh.onResults(onResults);
+
+        const camera = new Camera(videoElement, {
+            onFrame: async () => { await faceMesh.send({image: videoElement}); },
+            width: 640,
+            height: 480
+        });
+
+        window.requestCamera = async function() {
+            try {
+                await Tone.start();
+                await camera.start();
+                startCalibration();
+            } catch (err) {
+                alert("Камераға рұқсат қажет!");
+            }
+        };
+
+        function startCalibration() {
+            switchScreen('calibration-screen');
+            let count = 3;
+            const timerDiv = document.getElementById('calib-progress');
+            const interval = setInterval(() => {
+                count--;
+                timerDiv.innerText = count;
+                if (count <= 0) {
+                    clearInterval(interval);
+                    calibrationDone = true;
+                    startGame();
+                }
+            }, 1000);
+        }
+
+        function startGame() {
+            switchScreen('game-screen');
+            document.getElementById('game-ui').classList.remove('hidden');
+            isPlaying = true;
+            statusText.innerText = "ЭФИРДЕ";
+            startBackgroundMusic();
+            nextQuestion();
+        }
+
+        function nextQuestion() {
+            if (currentQ >= QUESTIONS.length) return endGame();
+
+            const data = QUESTIONS[currentQ];
+            document.getElementById('current-question').innerText = data.q;
+            document.getElementById('label-A').innerText = data.a;
+            document.getElementById('label-B').innerText = data.b;
+            document.getElementById('label-C').innerText = data.c;
+            document.getElementById('label-D').innerText = data.d;
+
+            resetSelectionUI();
+            timer = 30;
+            startTimer();
+        }
+
+        function startTimer() {
+            clearInterval(timerInterval);
+            const bar = document.getElementById('timer-bar');
+            timerInterval = setInterval(() => {
+                if (isPlaying) {
+                    timer -= 0.1;
+                    bar.style.width = `${(timer / 30) * 100}%`;
+                    if (timer <= 0) {
+                        clearInterval(timerInterval);
+                        handleAnswer(null);
+                    }
+                }
+            }, 100);
+        }
+
+        function handleAnswer(ans) {
+            isPlaying = false;
+            clearInterval(timerInterval);
+            const correct = QUESTIONS[currentQ].correct;
+
+            if (ans === correct) {
+                score += 10 + Math.floor(timer);
+                correctCount++;
+                playSuccessAudio(); // Дұрыс жауап әуені + шапалақ
+            } else {
+                if (!isMuted) wrongSynth.triggerAttackRelease("G1", "4n");
+                document.getElementById('screen-container').classList.add('shake');
+                setTimeout(() => document.getElementById('screen-container').classList.remove('shake'), 500);
+            }
+
+            document.getElementById('score').innerText = score.toString().padStart(3, '0');
+
+            setTimeout(() => {
+                currentQ++;
+                if (currentQ < QUESTIONS.length) {
+                    isPlaying = true;
+                    nextQuestion();
+                } else {
+                    endGame();
+                }
+            }, 1200);
+        }
+
+        function onResults(results) {
+            canvasCtx.save();
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+            canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+
+            if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
+                const landmarks = results.multiFaceLandmarks[0];
+                statusLed.className = 'w-3 h-3 bg-green-500 rounded-full';
+                statusText.innerText = "БЕТ АНЫҚТАЛДЫ";
+
+                if (!calibrationDone) {
+                    neutralPos.x = landmarks[1].x;
+                    neutralPos.y = landmarks[1].y;
+                }
+
+                if (isPlaying) processMovement(landmarks[1]);
+            } else {
+                statusLed.className = 'w-3 h-3 bg-red-600 rounded-full';
+                statusText.innerText = "БЕТ АНЫҚТАЛМАДЫ";
+            }
+            canvasCtx.restore();
+        }
+
+        function processMovement(nose) {
+            const threshold = 0.07;
+            let currentMove = null;
+
+            if (nose.x < neutralPos.x - threshold) currentMove = 'B';
+            else if (nose.x > neutralPos.x + threshold) currentMove = 'A';
+            else if (nose.y < neutralPos.y - threshold) currentMove = 'C';
+            else if (nose.y > neutralPos.y + threshold) currentMove = 'D';
+
+            if (currentMove) {
+                if (selectedOption !== currentMove) {
+                    selectedOption = currentMove;
+                    selectionStartTime = Date.now();
+                    highlightOption(currentMove);
+                } else {
+                    const elapsed = Date.now() - selectionStartTime;
+                    const pb = document.getElementById(`progress-${currentMove}`);
+                    if (pb) pb.style.width = Math.min(100, (elapsed / 1000) * 100) + '%';
+
+                    if (elapsed > 1000) {
+                        handleAnswer(currentMove);
+                        selectedOption = null;
+                    }
+                }
+            } else {
+                selectedOption = null;
+                resetSelectionUI();
+            }
+        }
+
+        function highlightOption(id) {
+            resetSelectionUI();
+            const btn = document.getElementById(`btn-${id}`);
+            if (btn) btn.classList.add('selection-glow', 'bg-white/10');
+        }
+
+        function resetSelectionUI() {
+            ['A', 'B', 'C', 'D'].forEach(id => {
+                const btn = document.getElementById(`btn-${id}`);
+                const pr = document.getElementById(`progress-${id}`);
+                if (btn) btn.classList.remove('selection-glow', 'bg-white/10');
+                if (pr) pr.style.width = '0%';
+            });
+        }
+
+        function switchScreen(id) {
+            ['start-screen', 'calibration-screen', 'game-screen', 'end-screen'].forEach(s => {
+                document.getElementById(s).classList.add('hidden');
+            });
+            document.getElementById(id).classList.remove('hidden');
+        }
+
+        function toggleMusic() {
+            isMuted = !isMuted;
+            document.getElementById('music-btn').innerText = isMuted ? '🔇' : '🔊';
+        }
+
+        function startBackgroundMusic() {
+            const notes = ["C2", "G2", "C3", "F2"];
+            let i = 0;
+            setInterval(() => {
+                if (!isMuted && isPlaying) {
+                    musicSynth.triggerAttackRelease(notes[i % notes.length], "2n");
+                    i++;
+                }
+            }, 1200);
+        }
+
+        function endGame() {
+            isPlaying = false;
+            switchScreen('end-screen');
+            document.getElementById('game-ui').classList.add('hidden');
+            document.getElementById('final-score').innerText = score;
+            const accuracy = Math.floor((correctCount / QUESTIONS.length) * 100);
+            document.getElementById('final-accuracy').innerText = accuracy + "%";
+            if(accuracy === 100) createConfetti();
+        }
+
+        function createConfetti() {
+            for(let i=0; i<50; i++) {
+                const c = document.createElement('div');
+                c.style.position = 'absolute';
+                c.style.width = '10px';
+                c.style.height = '10px';
+                c.style.background = (i % 2 === 0) ? '#00d4ff' : '#f8ac1b';
+                c.style.left = Math.random() * 100 + 'vw';
+                c.style.top = '-10px';
+                c.style.zIndex = '100';
+                c.style.transition = 'transform 3s linear';
+                document.body.appendChild(c);
+                setTimeout(() => {
+                    c.style.transform = `translateY(110vh) rotate(${Math.random() * 720}deg)`;
+                    setTimeout(() => c.remove(), 3000);
+                }, 50);
+            }
+        }
+
+        window.onload = () => {
+            setTimeout(() => { document.getElementById('loading').style.display = 'none'; }, 800);
+        };
+    </script>
+</body>
+</html>
